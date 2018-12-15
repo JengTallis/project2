@@ -1,8 +1,12 @@
+'''
+Usage: python graph.py W4111-48d757d14890.json
+'''
+
 import click
 from google.cloud import bigquery
 
-uni1 = '' # Your uni
-uni2 = '' # Partner's uni. If you don't have a partner, put None
+uni1 = 'sj2909' # Your uni
+uni2 = 'None' # Partner's uni. If you don't have a partner, put None
 
 # Test function
 def testquery(client):
@@ -16,36 +20,274 @@ def testquery(client):
 # SQL query for Question 1. You must edit this funtion.
 # This function should return a list of IDs and the corresponding text.
 def q1(client):
-
-    return []
+    q = """select idx as id, text from `w4111-columbia.graph.tweets`\
+            where text LIKE '%going live%'\
+            and text LIKE '%www.twitch%'
+        """
+    job = client.query(q)
+    results = job.result()
+    return list(results)
 
 # SQL query for Question 2. You must edit this funtion.
 # This function should return a list of days and their corresponding average likes.
 def q2(client):
-
-    return []
+    q = """ select SUBSTR(create_time,1,3) as day, avg(like_num) as avg_likes\
+            from `w4111-columbia.graph.tweets`\
+            group by day\
+            order by avg_likes desc\
+            limit 1
+        """
+    job = client.query(q)
+    results = job.result()
+    return list(results)
 
 # SQL query for Question 3. You must edit this funtion.
 # This function should return a list of source nodes and destination nodes in the graph.
 def q3(client):
-
-    return []
+    q = """CREATE OR REPLACE TABLE dataset.GRAPH AS \
+            select distinct twitter_username as src, REGEXP_EXTRACT(text, r"@([a-zA-Z0-9-]+)") as dst \
+            from `w4111-columbia.graph.tweets` \
+            where REGEXP_EXTRACT(text, r"@([a-zA-Z0-9-]+)") IS NOT NULL
+            --where REGEXP_EXTRACT(text, r"@([a-zA-Z0-9-]+)") in 
+            --(select twitter_username from `w4111-columbia.graph.tweets`);
+        """ # TODO: how to check valid Twitter user !!!!
+    job = client.query(q)
+    results = job.result()
+    return list(results)
 
 # SQL query for Question 4. You must edit this funtion.
 # This function should return a list containing the twitter username of the users having the max indegree and max outdegree.
 def q4(client):
+    q = """select * from \
+            (select dst as max_indegree \
+            from dataset.GRAPH \
+            group by dst \
+            order by count(distinct src) desc \
+            limit 1) AS mi, \
+            (select src as max_outdegree \
+            from dataset.GRAPH \
+            group by src \
+            order by count(distinct dst) desc \
+            limit 1) AS mo
+        """
 
-    return []
+    job = client.query(q)
+    results = job.result()
+    return list(results)
 
 # SQL query for Question 5. You must edit this funtion.
 # This function should return a list containing value of the conditional probability.
 def q5(client):
 
-    return []
+    '''
+    q = """
+            1. avg(indegree)
+            select avg(indegree) from
+            (select count(distinct src) as indegree from dataset.GRAPH group by dst)
+            
+            2. avg(avg_likes)
+            select avg(avg_likes) from \
+            (select avg(like_num) as avg_likes from `w4111-columbia.graph.tweets` group by twitter_username)
+
+            3. high_indeg nodes (HI)
+            select dst as node from dataset.GRAPH group by dst having count(distinct src) >= 
+            (select avg(indegree) from \
+            (select count(distinct src) as indegree from dataset.GRAPH group by dst))
+
+            4. low_indeg nodes (LI)
+            select dst as node from dataset.GRAPH group by dst having count(distinct src) < 
+            (select avg(indegree) from \
+            (select count(disticnt src) as indegree from dataset.GRAPH group by dst)) \
+
+            5. high_avg_likes nodes (HL)
+            select twitter_username as node from `w4111-columbia.graph.tweets` \
+            group by twitter_username having avg(like_num) >= \
+            (select avg(avg_likes) from \
+            (select avg(like_num) as avg_likes from `w4111-columbia.graph.tweets` group by twitter_username))
+
+            6. low avg_likes nodes (LL)
+            select twitter_username as node from `w4111-columbia.graph.tweets` \
+            group by twitter_username having avg(like_num) < \
+            (select avg(avg_likes) from \
+            (select avg(like_num) as avg_likes from `w4111-columbia.graph.tweets` group by twitter_username))
+
+            7. popular nodes (HI & HL)
+            select G.node from \
+            (select dst as node from dataset.GRAPH group by dst having count(distinct src) >= \
+            (select avg(indegree) from \
+            (select count(distinct src) as indegree from dataset.GRAPH group by dst))) as G, \
+            (select twitter_username as node from `w4111-columbia.graph.tweets` \
+            group by twitter_username having avg(like_num) >= \
+            (select avg(avg_likes) from \
+            (select avg(like_num) as avg_likes from `w4111-columbia.graph.tweets` group by twitter_username))) as T \
+            where G.node = T.node
+
+            8. Unpopular nodes (LI & LL)
+            select G.node from \
+            (select dst as node from dataset.GRAPH group by dst having count(distinct src) < \
+            (select avg(indegree) from \
+            (select count(distinct src) as indegree from dataset.GRAPH group by dst))) as G, \
+            (select twitter_username as node from `w4111-columbia.graph.tweets` \
+            group by twitter_username having avg(like_num) < \
+            (select avg(avg_likes) from \
+            (select avg(like_num) as avg_likes from `w4111-columbia.graph.tweets` group by twitter_username))) as T \
+            where G.node = T.node
+
+            9. number of (unpop @ pop) tweets
+            select count(*) as numer from dataset.GRAPH where \
+            src in \
+                (select G.node from \
+                (select dst as node from dataset.GRAPH group by dst having count(distinct src) < \
+                (select avg(indegree) from \
+                (select count(distinct src) as indegree from dataset.GRAPH group by dst))) as G, \
+                (select twitter_username as node from `w4111-columbia.graph.tweets` \
+                group by twitter_username having avg(like_num) < \
+                (select avg(avg_likes) from \
+                (select avg(like_num) as avg_likes from `w4111-columbia.graph.tweets` group by twitter_username))) as T \
+                where G.node = T.node) \
+            and dst in \
+                (select G.node from \
+                (select dst as node from dataset.GRAPH group by dst having count(distinct src) >= \
+                (select avg(indegree) from \
+                (select count(distinct src) as indegree from dataset.GRAPH group by dst))) as G, \
+                (select twitter_username as node from `w4111-columbia.graph.tweets` \
+                group by twitter_username having avg(like_num) >= \
+                (select avg(avg_likes) from \
+                (select avg(like_num) as avg_likes from `w4111-columbia.graph.tweets` group by twitter_username))) as T \
+                where G.node = T.node)
+
+            10. number of unpop tweets
+            select count(*) as denom from dataset.GRAPH where \
+            src in \
+                (select G.node from \
+                (select dst as node from dataset.GRAPH group by dst having count(distinct src) < \
+                (select avg(indegree) from \
+                (select count(distinct src) as indegree from dataset.GRAPH group by dst))) as G, \
+                (select twitter_username as node from `w4111-columbia.graph.tweets` \
+                group by twitter_username having avg(like_num) < \
+                (select avg(avg_likes) from \
+                (select avg(like_num) as avg_likes from `w4111-columbia.graph.tweets` group by twitter_username))) as T \
+                where G.node = T.node)
+
+            11. cond prob (@pop | unpop)
+            select numer/denom as popular_unpopular
+            from
+            (select count(*) as numer from dataset.GRAPH where \
+            src in \
+                (select G.node from \
+                (select dst as node from dataset.GRAPH group by dst having count(distinct src) < \
+                (select avg(indegree) from \
+                (select count(distinct src) as indegree from dataset.GRAPH group by dst))) as G, \
+                (select twitter_username as node from `w4111-columbia.graph.tweets` \
+                group by twitter_username having avg(like_num) < \
+                (select avg(avg_likes) from \
+                (select avg(like_num) as avg_likes from `w4111-columbia.graph.tweets` group by twitter_username))) as T \
+                where G.node = T.node) \
+            and dst in \
+                (select G.node from \
+                (select dst as node from dataset.GRAPH group by dst having count(distinct src) >= \
+                (select avg(indegree) from \
+                (select count(distinct src) as indegree from dataset.GRAPH group by dst))) as G, \
+                (select twitter_username as node from `w4111-columbia.graph.tweets` \
+                group by twitter_username having avg(like_num) >= \
+                (select avg(avg_likes) from \
+                (select avg(like_num) as avg_likes from `w4111-columbia.graph.tweets` group by twitter_username))) as T \
+                where G.node = T.node)),
+            (select count(*) as denom from dataset.GRAPH where \
+            src in \
+                (select G.node from \
+                (select dst as node from dataset.GRAPH group by dst having count(distinct src) < \
+                (select avg(indegree) from \
+                (select count(distinct src) as indegree from dataset.GRAPH group by dst))) as G, \
+                (select twitter_username as node from `w4111-columbia.graph.tweets` \
+                group by twitter_username having avg(like_num) < \
+                (select avg(avg_likes) from \
+                (select avg(like_num) as avg_likes from `w4111-columbia.graph.tweets` group by twitter_username))) as T \
+                where G.node = T.node))
+        """
+    '''
+    q = """select numer/denom as popular_unpopular
+            from
+            (select count(*) as numer from dataset.GRAPH where \
+            src in \
+                (select G.node from \
+                (select dst as node from dataset.GRAPH group by dst having count(distinct src) < \
+                (select avg(indegree) from \
+                (select count(distinct src) as indegree from dataset.GRAPH group by dst))) as G, \
+                (select twitter_username as node from `w4111-columbia.graph.tweets` \
+                group by twitter_username having avg(like_num) < \
+                (select avg(avg_likes) from \
+                (select avg(like_num) as avg_likes from `w4111-columbia.graph.tweets` group by twitter_username))) as T \
+                where G.node = T.node) \
+            and dst in \
+                (select G.node from \
+                (select dst as node from dataset.GRAPH group by dst having count(distinct src) >= \
+                (select avg(indegree) from \
+                (select count(distinct src) as indegree from dataset.GRAPH group by dst))) as G, \
+                (select twitter_username as node from `w4111-columbia.graph.tweets` \
+                group by twitter_username having avg(like_num) >= \
+                (select avg(avg_likes) from \
+                (select avg(like_num) as avg_likes from `w4111-columbia.graph.tweets` group by twitter_username))) as T \
+                where G.node = T.node)),
+            (select count(*) as denom from dataset.GRAPH where \
+            src in \
+                (select G.node from \
+                (select dst as node from dataset.GRAPH group by dst having count(distinct src) < \
+                (select avg(indegree) from \
+                (select count(distinct src) as indegree from dataset.GRAPH group by dst))) as G, \
+                (select twitter_username as node from `w4111-columbia.graph.tweets` \
+                group by twitter_username having avg(like_num) < \
+                (select avg(avg_likes) from \
+                (select avg(like_num) as avg_likes from `w4111-columbia.graph.tweets` group by twitter_username))) as T \
+                where G.node = T.node))
+        """
+
+    job = client.query(q)
+    results = job.result()
+    return list(results) 
 
 # SQL query for Question 6. You must edit this funtion.
 # This function should return a list containing the value for the number of triangles in the graph.
 def q6(client):
+    q = """select numer/denom as popular_unpopular
+            from
+            (select count(*) as numer from dataset.GRAPH where \
+            src in \
+                (select G.node from \
+                (select dst as node from dataset.GRAPH group by dst having count(distinct src) < \
+                (select avg(indegree) from \
+                (select count(distinct src) as indegree from dataset.GRAPH group by dst))) as G, \
+                (select twitter_username as node from `w4111-columbia.graph.tweets` \
+                group by twitter_username having avg(like_num) < \
+                (select avg(avg_likes) from \
+                (select avg(like_num) as avg_likes from `w4111-columbia.graph.tweets` group by twitter_username))) as T \
+                where G.node = T.node) \
+            and dst in \
+                (select G.node from \
+                (select dst as node from dataset.GRAPH group by dst having count(distinct src) >= \
+                (select avg(indegree) from \
+                (select count(distinct src) as indegree from dataset.GRAPH group by dst))) as G, \
+                (select twitter_username as node from `w4111-columbia.graph.tweets` \
+                group by twitter_username having avg(like_num) >= \
+                (select avg(avg_likes) from \
+                (select avg(like_num) as avg_likes from `w4111-columbia.graph.tweets` group by twitter_username))) as T \
+                where G.node = T.node)),
+            (select count(*) as denom from dataset.GRAPH where \
+            src in \
+                (select G.node from \
+                (select dst as node from dataset.GRAPH group by dst having count(distinct src) < \
+                (select avg(indegree) from \
+                (select count(distinct src) as indegree from dataset.GRAPH group by dst))) as G, \
+                (select twitter_username as node from `w4111-columbia.graph.tweets` \
+                group by twitter_username having avg(like_num) < \
+                (select avg(avg_likes) from \
+                (select avg(like_num) as avg_likes from `w4111-columbia.graph.tweets` group by twitter_username))) as T \
+                where G.node = T.node))
+        """
+
+    job = client.query(q)
+    results = job.result()
+    return list(results)   
 
     return []
 
@@ -154,7 +396,8 @@ def main(pathtocred):
     client = bigquery.Client.from_service_account_json(pathtocred)
 
     #funcs_to_test = [q1, q2, q3, q4, q5, q6, q7]
-    funcs_to_test = [testquery]
+    funcs_to_test = [q5]
+    #funcs_to_test = [testquery]
     for func in funcs_to_test:
         rows = func(client)
         print ("\n====%s====" % func.__name__)
