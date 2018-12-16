@@ -258,7 +258,7 @@ def q7(client):
     q = """select node as twitter_username, rank as page_rank_score
             from dataset.Pagerank
             order by rank desc
-            limit 3
+            limit 100
         """    
     job = client.query(q)
     results = job.result()
@@ -452,7 +452,7 @@ def main(pathtocred):
     #funcs_to_test = [testquery]
     for func in funcs_to_test:
         rows = func(client)
-        print ("n====%s====" % func.__name__)
+        print ("\n====%s====" % func.__name__)
         print(rows)
 
     #bfs(client, 'A', 5)
