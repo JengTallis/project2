@@ -232,13 +232,13 @@ def q5(client):
 # SQL query for Question 6. You must edit this function.
 # This function should return a list containing the value for the number of triangles in the graph.
 def q6(client):
-    q = """select count(*) from
+    q = """select count(*) as no_of_triangles from
             dataset.GRAPH A, dataset.GRAPH B, dataset.GRAPH C
             where A.dst = B.src and B.dst = C.src and C.dst = A.src
             and B.src < C.src
         """
 
-    q = """select count(*) from
+    q = """select count(*) as no_of_triangles from
             dataset.GRAPH A join dataset.GRAPH B
             on A.dst = B.src join
             dataset.GRAPH C
