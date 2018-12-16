@@ -17,7 +17,7 @@ def testquery(client):
     results = job.result()
     return list(results)
 
-# SQL query for Question 1. You must edit this funtion.
+# SQL query for Question 1. You must edit this function.
 # This function should return a list of IDs and the corresponding text.
 def q1(client):
     q = """select idx as id, text from `w4111-columbia.graph.tweets`
@@ -28,7 +28,7 @@ def q1(client):
     results = job.result()
     return list(results)
 
-# SQL query for Question 2. You must edit this funtion.
+# SQL query for Question 2. You must edit this function.
 # This function should return a list of days and their corresponding average likes.
 def q2(client):
     q = """ select SUBSTR(create_time,1,3) as day, avg(like_num) as avg_likes
@@ -41,7 +41,7 @@ def q2(client):
     results = job.result()
     return list(results)
 
-# SQL query for Question 3. You must edit this funtion.
+# SQL query for Question 3. You must edit this function.
 # This function should return a list of source nodes and destination nodes in the graph.
 def q3(client):
     q = """CREATE OR REPLACE TABLE dataset.GRAPH AS
@@ -55,7 +55,7 @@ def q3(client):
     results = job.result()
     return list(results)
 
-# SQL query for Question 4. You must edit this funtion.
+# SQL query for Question 4. You must edit this function.
 # This function should return a list containing the twitter username of the users having the max indegree and max outdegree.
 def q4(client):
     q = """select * from
@@ -74,7 +74,7 @@ def q4(client):
     results = job.result()
     return list(results)
 
-# SQL query for Question 5. You must edit this funtion.
+# SQL query for Question 5. You must edit this function.
 # This function should return a list containing value of the conditional probability.
 def q5(client):
     '''
@@ -229,7 +229,7 @@ def q5(client):
     results = job.result()
     return list(results) 
 
-# SQL query for Question 6. You must edit this funtion.
+# SQL query for Question 6. You must edit this function.
 # This function should return a list containing the value for the number of triangles in the graph.
 def q6(client):
     q = """select count(*) from
@@ -248,19 +248,35 @@ def q6(client):
     results = job.result()
     return list(results)   
 
-# SQL query for Question 7. You must edit this funtion.
+# SQL query for Question 7. You must edit this function.
 # This function should return a list containing the twitter username and their corresponding PageRank.
 def q7(client):
-    q = """select node as twitter_username, pagerank as page_rank_score
+
+    n_iter = 20
+    pagerank(client, n_iter)
+
+    q = """select node as twitter_username, rank as page_rank_score
             from dataset.Pagerank
-            order by pagerank desc
+            order by rank desc
+            limit 3
         """    
     job = client.query(q)
     results = job.result()
     return list(results)
 
-# SQL query for testing
+# SQL test query
 def q8(client):
+    q = """select node, rank from dataset.Pagerank
+            where LENGTH(node) > 0
+            order by rank asc
+            limit 3
+        """    
+    job = client.query(q)
+    results = job.result()
+    return list(results)
+
+# SQL query for pagerank table construction
+def pre_pagerank(client):
 
     q = """
         DROP TABLE IF EXISTS dataset.Pagerank
@@ -299,52 +315,39 @@ def q8(client):
     job = client.query(q)
     results = job.result()
 
-    return list(results)
-
-def q9(client):
-    q = """select rank from dataset.Pagerank
-            order by rank desc
-            limit 3
-        """    
-    job = client.query(q)
-    results = job.result()
-    return list(results)
-
 # iterative PageRank algorithm.
-def pagerank(client, start, n_iter):
+def pagerank(client, n_iter):
 
-    qq = """
-        CREATE OR REPLACE TABLE dataset.Pagerank AS
-        SELECT '{start}' as node, 0 as pagerank
-        """.format(start=start)
-    job = client.query(q)
-    # Result will be empty, but calling makes the code wait for the query to complete
-    job.result()
+    pre_pagerank(client)
 
     for i in range(n_iter):
-        print("Step %d..." % (i+1))
+        #print("Iteration %d..." % (i+1))
+
+        # ====== update pagerank ====== 
         q1 = """
-        UPDATE dataset.Pagerank
-        SET 
-        SELECT distinct dst, {next_distance}
-        FROM dataset.bfs_graph
-            WHERE src IN (
-                SELECT node
-                FROM dataset.pagerank
-                WHERE distance = {curr_distance}
-                )
-            AND dst NOT IN (
-                SELECT node
-                FROM dataset.pagerank
-                )
-            """.format(
-                curr_distance=i,
-                next_distance=i+1
-            )
+        UPDATE dataset.Pagerank P
+        SET P.rank = (
+            select sum(B.rank/B.outdeg) from
+            dataset.Pagerank B, dataset.GRAPH A
+            where B.node = A.src
+            and A.dst = P.node
+        ) where P.node in (select dst from dataset.GRAPH)
+        """
+
         job = client.query(q1)
         results = job.result()
         # print(results)
 
+        # ====== make sure the source nodes (nodes without incoming edge)' pageranks becomes 0, not None ====== 
+        q2 = """
+        UPDATE dataset.Pagerank P
+        SET P.rank = 0 
+        where P.node not in (select dst from dataset.GRAPH)
+        """
+
+        job = client.query(q2)
+        results = job.result()
+        # print(results)
 
 
 # Do not edit this function. This is for helping you develop your own iterative PageRank algorithm.
@@ -444,8 +447,8 @@ def save_table():
 def main(pathtocred):
     client = bigquery.Client.from_service_account_json(pathtocred)
 
-    #funcs_to_test = [q1, q2, q3, q4, q5, q6, q7]
-    funcs_to_test = [q9]
+    funcs_to_test = [q1, q2, q3, q4, q5, q6, q7]
+    #funcs_to_test = [q8]
     #funcs_to_test = [testquery]
     for func in funcs_to_test:
         rows = func(client)
@@ -453,6 +456,7 @@ def main(pathtocred):
         print(rows)
 
     #bfs(client, 'A', 5)
+    #pagerank(client, 5)
 
 if __name__ == "__main__":
   main()
